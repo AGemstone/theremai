@@ -9,11 +9,11 @@ import queue
 
 sd.default.device = "pipewire"
 samplerate = sd.query_devices(None, 'output')['default_samplerate']
-trivial_table_size = 100/samplerate # sample every 100Hz
-x = np.arange(0, 2, trivial_table_size) 
-sin_table = np.sin(np.pi * x)
-saw_table = 2 * (x/2 - np.floor(0.5 + x/2))
-tri_table = 2 * abs(2 * (x / 2 - np.floor(0.5 + x/2)))-1
+trivial_table_size = int(samplerate)
+x = np.arange(0, 2, 1 / trivial_table_size) 
+sin_table = np.sin(2 * np.pi * x)
+saw_table = 2 * (x / 2 - np.floor(0.5 + x / 2))
+tri_table = 2 * abs(2 * (x / 2 - np.floor(0.5 + x / 2))) - 1
 
 #TODO : Check if using rms 
 def amp_rms(table):
@@ -21,7 +21,7 @@ def amp_rms(table):
 def amp_peak(table):
         return abs(np.max(table))
 
-sys.exit(-1)
+#sys.exit(-1)
 
 class WaveManager:
     def triangle(self,buffer_size):
@@ -55,7 +55,7 @@ class WaveManager:
     def __init__(self):
         self.start_idx = 0
         self.frequency = 440
-        self.function = self.square
+        self.function = self.sin
         self.amplitude = 0.2
         self.phase = 0
         self.phase_buffer = None
@@ -64,11 +64,11 @@ def callback(outdata, frames, audio_time, status):
         if status:
             print(status, file=sys.stderr)
         if wave.phase_buffer is None:
-            wave.phase_buffer = np.zeros((frames,1))
-        # outdata[:] = wave.function(frames)
-        # wave.frequency = 440 + np.sin(2 * np.pi * (time.time()+i)*0.57735101135711020.1 ) * 220
+            wave.phase_buffer = np.zeros((frames,2))
+        #print(trivial_table_size)
+        outdata[:] = wave.function(frames)
+        # wave.frequency = 440 + np.sin(2 * np.pi * (time.time()+i)*0.57735101135711020 ) * 220
         wave.start_idx += frames
-        # print(frames)
         block_queue.put(outdata[::downsample, mapping])
 
 
@@ -102,8 +102,8 @@ fig.tight_layout(pad=0)
 ani = FuncAnimation(fig, plot_callback, 60, blit=True)
         
 try:
-    with sd.OutputStream(channels=2, callback=callback,latency=0.05) as sd_stream:
-        print(sd.default.blocksize)
+    with sd.OutputStream(channels=2, callback=callback) as sd_stream:
+        #print(sd.default.blocksize)
         plt.show()
         # input() 
 
