@@ -1,4 +1,4 @@
-# theremai
+# TheremAI
 A virtual theremin that uses hand detection to control sound
 
 ## Install
