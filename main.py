@@ -3,17 +3,17 @@ import numpy as np
 import mediapipe as mp
 import random
 import sounddevice as sd
-import sys
 import time
+import sys
 
 from mediapipe import solutions as mp_solutions
 from mediapipe.framework.formats import landmark_pb2
-import numpy as np
 
 MARGIN = 10  # pixels
 FONT_SIZE = 1
 FONT_THICKNESS = 1
 HANDEDNESS_TEXT_COLOR = (88, 205, 54)  # vibrant green
+
 
 def draw_landmarks_on_image(rgb_image, detection_result):
     hand_landmarks_list = detection_result.hand_landmarks
@@ -51,6 +51,7 @@ def draw_landmarks_on_image(rgb_image, detection_result):
 
     return annotated_image
 
+
 contrast = 255
 brightness = 90
 
@@ -81,8 +82,9 @@ hands_last_known = [None, None]
 
 sd.default.device = "pipewire"
 samplerate = sd.query_devices(None, 'output')['default_samplerate']
-x = np.arange(0, 2, 100/samplerate) # sample every 100Hz
+x = np.arange(0, 2, 1/samplerate)
 sin_table = np.sin(np.pi * x)
+
 
 class WaveManager:
     def triangle(self, x, amplitude, frequency):
@@ -113,53 +115,47 @@ samplerate = sd.query_devices(None, 'output')['default_samplerate']
 wave = WaveManager()
 waves = [wave.triangle, wave.sin, wave.saw, wave.square, wave.noise]
 
+
 def sd_callback(outdata, frames, audio_time, status):
-        if status:
-            print(status, file=sys.stderr)
-        # t = (wave.start_idx + np.arange(frames)) / samplerate
-        # t_n0 = np.append([wave.last_t], t[:-1])
-        # t = (t_n0 + wave.phase) % (2 * np.pi)
-        # t = t.reshape(-1, 1)
-        for i in range(frames):
-            wave.phase +=  wave.frequency  / samplerate * len(sin_table) 
-            outdata[i] = wave.amplitude * sin_table[int(wave.phase) % len(sin_table)]
-        # wave.frequency = 440 + np.sin(2 * np.pi * (time.time()+i)*0.1 ) * 220
-        wave.start_idx += frames
-        # wave.last_t = wave.amplitude * sin_table[int(wave.phase) % len(sin_table)]
+    if status:
+        print(status, file=sys.stderr)
+    for i in range(frames):
+        wave.phase += wave.frequency / samplerate * len(sin_table)
+        outdata[i] = wave.amplitude * \
+            sin_table[int(wave.phase) % len(sin_table)]
+    wave.start_idx += frames
 
 sd_out = sd.OutputStream(channels=2, callback=sd_callback)
 
+
 def hand_callback(result: HandLandmarkerResult, output_image: mp.Image, timestamp_ms: int):
-    global glob,frequency,amplitude
-    # glob = draw_landmarks_on_image(np.zeros(output_image.numpy_view().shape), result)
-    img = cv2.cvtColor(output_image.numpy_view(),cv2.COLOR_BGR2GRAY)
-    img = cv2.GaussianBlur(img,(3,3),0)
-    _,img = cv2.threshold(img,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
-    img = cv2.cvtColor(img,cv2.COLOR_GRAY2RGB)
+    global glob, frequency, amplitude
+    img = output_image.numpy_view()
+    # img = cv2.GaussianBlur(img, (3, 3), 0)
+    # _, img = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)
+    # img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
     glob = draw_landmarks_on_image(img, result)
-    
-    # if len(result.handedness) == 2:
-    #     print(result.handedness[0])
-    #     hand_indices = result.handedness[0][0].index,result.handedness[1][0].index
-    #     freq = 2*((0.5 - result.hand_landmarks[hand_indices[0]][HandLandmark.WRIST].x))
-    #     wave.frequency = 440-440*(freq)
-    #     print(freq)
-    #     wave.amplitude = np.clip((1 - result.hand_landmarks[hand_indices[0]][HandLandmark.WRIST].y),0,1)
-    #     # print(result.hand_landmarks[hand_indices[1]][HandLandmark.WRIST].y )
-    #     print(wave.amplitude)
-    # if result.handedness != []:
-    #     freq = 2*((0.5 - result.hand_landmarks[0][HandLandmark.WRIST].x))
-    #     wave.frequency = 440-440*(freq)
-    #     wave.amplitude = np.clip((1 - result.hand_landmarks[0][HandLandmark.WRIST].y),0,1)
+    if len(result.handedness) == 2:
+        detected_hands = result.handedness[0][0], result.handedness[1][0]
+        if detected_hands[0].category_name == detected_hands[1].category_name:
+            return
+        hand_indices = detected_hands[0].index,detected_hands[1].index
+        freq = 2 * \
+            ((0.5 -
+             result.hand_landmarks[hand_indices[0]][HandLandmark.WRIST].x))
+        wave.frequency = 440-440*(freq)
+        wave.amplitude = 0.2 * \
+            np.clip(
+                (1 - result.hand_landmarks[hand_indices[1]][HandLandmark.WRIST].y), 0, 1)
 
 with HandLandmarker.create_from_options(HandLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path='hand_landmarker.task'),
-            running_mode=VisionRunningMode.LIVE_STREAM,
-            num_hands=2,
-            min_tracking_confidence=0.1,
-            min_hand_detection_confidence=0.2,
-            result_callback=hand_callback)) as landmarker,\
-            sd.OutputStream(channels=2, callback=sd_callback,latency=0.05):
+        base_options=BaseOptions(model_asset_path='hand_landmarker.task'),
+        running_mode=VisionRunningMode.LIVE_STREAM,
+        num_hands=2,
+        min_tracking_confidence=0.1,
+        min_hand_detection_confidence=0.2,
+        result_callback=hand_callback)) as landmarker, \
+        sd.OutputStream(channels=2, callback=sd_callback, latency=0.05):
     while cap.isOpened():
         # contrast = cv2.getTrackbarPos('contrast', 'img')
         # wave.frequency = cv2.getTrackbarPos('frequency', 'img')/100
@@ -171,7 +167,7 @@ with HandLandmarker.create_from_options(HandLandmarkerOptions(
             # img = cv2.fastNlMeansDenoisingColored(img,None,10,10,3,10)
             # bright_contrast = (contrast / 255 * img + brightness)
             # img = np.clip(bright_contrast.astype(np.uint8), 0, 255)
-            img = cv2.resize(img, dsize=(640,480))
+            img = cv2.resize(img, dsize=(640, 480))
             # img = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
             # img = cv2.GaussianBlur(img,(5,5),0)
             # _,img = cv2.threshold(img,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)
@@ -180,10 +176,9 @@ with HandLandmarker.create_from_options(HandLandmarkerOptions(
             landmarker.detect_async(mp_img, int(
                 cap.get(cv2.CAP_PROP_POS_MSEC)))
             # cv2.imshow(cv2.cvtColor(annotated_image, cv2.COLOR_RGB2BGR))
-
             if glob is not None:
                 cv2.imshow("img", glob)
-            
+
             # if not None in hands_last_known:
             #     print(hands_last_known)
         else:
